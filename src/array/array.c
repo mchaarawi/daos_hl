@@ -48,7 +48,42 @@ typedef enum {
 	DAOS_HL_OP_READ,
 } daos_hl_op_type_t;
 
-int
+static int
+daos_hl_extent_same(daos_hl_array_ranges_t *ranges, daos_sg_list_t *sgl);
+
+static int
+compute_dkey(daos_off_t array_i, daos_size_t *num_records,
+	     daos_off_t *record_i, daos_key_t *obj_dkey);
+
+static int
+create_sgl(daos_sg_list_t *user_sgl, daos_size_t num_records,
+	   daos_off_t *sgl_off, daos_size_t *sgl_i, daos_sg_list_t *sgl);
+
+static int
+daos_hl_access_obj(daos_handle_t oh, daos_epoch_t epoch,
+		   daos_hl_array_ranges_t *ranges, daos_sg_list_t *sgl,
+		   daos_csum_buf_t *csums, daos_event_t *ev,
+		   daos_hl_op_type_t op_type);
+
+static int
+daos_hl_extent_same(daos_hl_array_ranges_t *ranges, daos_sg_list_t *sgl)
+{
+	daos_size_t ranges_len;
+	daos_size_t sgl_len;
+	daos_size_t u;
+
+	ranges_len = 0;
+	for (u=0 ; u<ranges->ranges_nr ; u++)
+		ranges_len += ranges->range[u].len;
+
+	sgl_len = 0;
+	for (u=0 ; u<sgl->sg_nr.num; u++)
+		sgl_len += sgl->sg_iovs[u].iov_len;
+
+	return ((ranges_len == sgl_len) ? 1 : 0);
+}
+
+static int
 compute_dkey(daos_off_t array_i, daos_size_t *num_records, daos_off_t *record_i,
 	     daos_key_t *obj_dkey)
 {
@@ -95,8 +130,9 @@ compute_dkey(daos_off_t array_i, daos_size_t *num_records, daos_off_t *record_i,
 	return 0;
 }
 
-int create_sgl(daos_sg_list_t *user_sgl, daos_size_t num_records,
-	       daos_off_t *sgl_off, daos_size_t *sgl_i, daos_sg_list_t *sgl)
+static int
+create_sgl(daos_sg_list_t *user_sgl, daos_size_t num_records,
+	   daos_off_t *sgl_off, daos_size_t *sgl_i, daos_sg_list_t *sgl)
 {
 	daos_size_t 	k;
 	daos_size_t 	rem_records;
@@ -140,7 +176,7 @@ int create_sgl(daos_sg_list_t *user_sgl, daos_size_t num_records,
 	return 0;
 }
 
-int
+static int
 daos_hl_access_obj(daos_handle_t oh, daos_epoch_t epoch,
 		   daos_hl_array_ranges_t *ranges, daos_sg_list_t *sgl,
 		   daos_csum_buf_t *csums, daos_event_t *ev,
@@ -158,7 +194,7 @@ daos_hl_access_obj(daos_handle_t oh, daos_epoch_t epoch,
 	}
 
 	rc = daos_hl_extent_same(ranges, sgl);
-	if (0 != rc) {
+	if (1 != rc) {
 		D_ERROR("Unequal extents of memory and array descriptors\n");
 		return -1;
 	}
