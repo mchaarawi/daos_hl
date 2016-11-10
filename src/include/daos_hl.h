@@ -27,7 +27,17 @@
 #ifndef __DAOS_HL_API_H__
 #define __DAOS_HL_API_H__
 
+#include <sys/types.h>
+#include <unistd.h>
+#include <stdlib.h>
 #include <daos_types.h>
+
+#define D_ERROR(fmt, ...)						\
+do {									\
+	fprintf(stderr, "%s:%d:%d:%s() " fmt, __FILE__, getpid(),	\
+		__LINE__, __func__, ## __VA_ARGS__);			\
+	fflush(stderr);							\
+} while (0)
 
 typedef struct {
 	daos_size_t		len;

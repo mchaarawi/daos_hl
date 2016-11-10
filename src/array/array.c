@@ -26,6 +26,9 @@
  * src/array/array.c
  */
 
+#include <assert.h>
+#include <stdio.h>
+#include <daos_hl.h>
 #include <daos_api.h>
 
 /** MSC - Those need to be configurable later through hints */
@@ -74,7 +77,7 @@ daos_hl_extent_same(daos_hl_array_ranges_t *ranges, daos_sg_list_t *sgl)
 
 	ranges_len = 0;
 	for (u=0 ; u<ranges->ranges_nr ; u++)
-		ranges_len += ranges->range[u].len;
+		ranges_len += ranges->ranges[u].len;
 
 	sgl_len = 0;
 	for (u=0 ; u<sgl->sg_nr.num; u++)
@@ -93,6 +96,7 @@ compute_dkey(daos_off_t array_i, daos_size_t *num_records, daos_off_t *record_i,
 	daos_off_t 	rel_byte_a; 	/* offset relative to grp */
 	daos_size_t 	dkey_num; 	/* The dkey number for access */
 	daos_size_t 	grp_iter; 	/* round robin iteration number */
+	daos_off_t	dkey_byte_a;	/* relative offset of dkey iter */
 	char 		*dkey;
 
 	byte_a = array_i * DAOS_HL_CELL_SIZE;
@@ -110,12 +114,13 @@ compute_dkey(daos_off_t array_i, daos_size_t *num_records, daos_off_t *record_i,
 	grp_iter = rel_byte_a / DAOS_HL_DKEY_GRP_CHUNK;
 	dkey_byte_a = (grp_iter * DAOS_HL_DKEY_GRP_CHUNK) +
 		(dkey_num * DAOS_HL_DKEY_BLOCK_SIZE);
-	record_i = (DAOS_HL_DKEY_BLOCK_SIZE * grp_iter) +
+	*record_i = (DAOS_HL_DKEY_BLOCK_SIZE * grp_iter) +
 		(rel_byte_a - dkey_byte_a);
 
 	/* Number of records to access in current dkey */
-	num_records = ((grp_iter + 1) * DAOS_HL_DKEY_BLOCK_SIZE) - record_i;
-	asprintf(dkey, "%zu_%zu", dkey_grp, dkey_num);
+	*num_records = ((grp_iter + 1) * DAOS_HL_DKEY_BLOCK_SIZE) - *record_i;
+
+	asprintf(&dkey, "%zu_%zu", dkey_grp, dkey_num);
 	if (NULL == dkey) {
 		D_ERROR("Failed memory allocation\n");
 		return -1;
@@ -127,6 +132,7 @@ compute_dkey(daos_off_t array_i, daos_size_t *num_records, daos_off_t *record_i,
 		free(dkey);
 		dkey = NULL;
 	}
+
 	return 0;
 }
 
@@ -159,41 +165,44 @@ create_sgl(daos_sg_list_t *user_sgl, daos_size_t num_records,
 		sgl->sg_iovs[k].iov_buf = user_sgl->sg_iovs[cur_i].iov_buf +
 			cur_off;
 		if (rem_records >= user_sgl->sg_iovs[cur_i].iov_len) {
-			sgl->iov_len = user_sgl->sg_iovs[cur_i].iov_len;
+			sgl->sg_iovs[k].iov_len = user_sgl->sg_iovs[cur_i].iov_len;
 			cur_i ++;
 			cur_off = 0;
 		}
 		else {
-			sgl->iov_len = rem_records;
+			sgl->sg_iovs[k].iov_len = rem_records;
 			cur_off += rem_records;
 		}
-		sgl->iov_buf_len = sgl->iov_len;
-		rem_records -= sgl->iov_len;
+		sgl->sg_iovs[k].iov_buf_len = sgl->sg_iovs[k].iov_len;
+		rem_records -= sgl->sg_iovs[k].iov_len;
+		k ++;
 	} while (rem_records);
 
 	*sgl_i = cur_i;
 	*sgl_off = cur_off;
+
 	return 0;
 }
 
 static int
 daos_hl_access_obj(daos_handle_t oh, daos_epoch_t epoch,
-		   daos_hl_array_ranges_t *ranges, daos_sg_list_t *sgl,
+		   daos_hl_array_ranges_t *ranges, daos_sg_list_t *user_sgl,
 		   daos_csum_buf_t *csums, daos_event_t *ev,
 		   daos_hl_op_type_t op_type)
 {
-	int rc;
+	daos_size_t	u;
+	int		rc;
 
 	if (NULL == ranges) {
 		D_ERROR("NULL ranges passed\n");
 		return -1;
 	}
-	if (NULL == sgl) {
+	if (NULL == user_sgl) {
 		D_ERROR("NULL scatter-gather list passed\n");
 		return -1;
 	}
 
-	rc = daos_hl_extent_same(ranges, sgl);
+	rc = daos_hl_extent_same(ranges, user_sgl);
 	if (1 != rc) {
 		D_ERROR("Unequal extents of memory and array descriptors\n");
 		return -1;
@@ -209,7 +218,7 @@ daos_hl_access_obj(daos_handle_t oh, daos_epoch_t epoch,
 		daos_size_t cur_i; 	/* index into user sgl iovec to track
 					 * current position */
 
-		if (0 == ranges->range[u].len)
+		if (0 == ranges->ranges[u].len)
 			continue;
 
 		records = ranges->ranges[u].len;
@@ -222,6 +231,9 @@ daos_hl_access_obj(daos_handle_t oh, daos_epoch_t epoch,
 			daos_vec_iod_t 	iod;
 			daos_recx_t 	rex;
 			daos_sg_list_t 	sgl;
+			daos_size_t	num_records;
+			daos_off_t 	record_i;
+			char		akey[] = "akey_not_used";
 
 			/* 
 			 * For current range, compute dkey of the starting
