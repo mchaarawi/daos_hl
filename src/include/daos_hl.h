@@ -31,6 +31,7 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <daos_types.h>
+#include <daos_api.h>
 
 #define D_ERROR(fmt, ...)						\
 do {									\

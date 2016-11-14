@@ -1,0 +1,16 @@
+#!python
+
+def scons():
+    Import('env')
+
+    libs = ['daos', 'daos_common', 'daos_tier', 'daos_hl', 'crt',
+            'mpi', 'uuid', 'cmocka']
+
+    denv = env.Clone()
+
+    denv.Append(CPPPATH = ['#/src/tests/'])
+    test = denv.Program('daos_hl_test', Glob('*.c'), LIBS = libs)
+    denv.Install('$PREFIX/bin/', test)
+
+if __name__ == 'SCons.Script':
+    scons()

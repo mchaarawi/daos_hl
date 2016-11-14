@@ -1,0 +1,28 @@
+#!python
+
+def scons():
+    """Run Scons"""
+    Import('env DAOS_HL_VERSION LIB_PREFIX INCLUDE_PREFIX')
+    denv = env.Clone()
+
+    Import('daos_hl_tgts')
+
+    libdaos_hl = denv.SharedLibrary('libdaos_hl', Glob('*.c') + daos_hl_tgts,
+                                    SHLIBVERSION=DAOS_HL_VERSION)
+
+    if hasattr(denv, 'InstallVersionedLib'):
+        denv.InstallVersionedLib('$PREFIX/lib', libdaos_hl,
+                                SHLIBVERSION=DAOS_HL_VERSION)
+    else:
+        denv.Install(LIB_PREFIX, libdaos_hl)
+        denv.Install(INCLUDE_PREFIX, ['include/daos_hl.h']);
+
+    env.AppendUnique(LIBPATH=[Dir(".")])
+    env.AppendUnique(RPATH=[Dir(".").abspath])
+    env.Append(CPPPATH = ['#/src/include/'])
+
+    # build test
+    SConscript('tests/SConscript', exports=['env'])
+
+if __name__ == 'SCons.Script':
+    scons()

@@ -29,7 +29,6 @@
 #include <assert.h>
 #include <stdio.h>
 #include <daos_hl.h>
-#include <daos_api.h>
 
 /** MSC - Those need to be configurable later through hints */
 /** Array cell size - curently a byte array i.e. 1 byte */
@@ -263,6 +262,25 @@ daos_hl_access_obj(daos_handle_t oh, daos_epoch_t epoch,
 			}
 
 			/* issue KV IO to DAOS */
+			if(DAOS_HL_OP_READ == op_type) {
+				rc = daos_obj_fetch(oh, epoch, &dkey, 1, &iod, 
+						    &sgl, NULL, NULL);
+				if (rc != 0) {
+					D_ERROR("KV Fetch failed\n");
+					return rc;
+				}
+			}
+			else if(DAOS_HL_OP_WRITE == op_type) {
+				rc = daos_obj_update(oh, epoch, &dkey, 1, &iod, 
+						     &sgl, NULL);
+				if (rc != 0) {
+					D_ERROR("KV Fetch failed\n");
+					return rc;
+				}
+			}
+			else {
+				assert(0);
+			}
 
 			/* update current range */
 			records -= num_records;

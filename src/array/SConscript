@@ -1,0 +1,18 @@
+#!python
+
+def scons():
+    """Run Scons"""
+    Import('env', 'DAOS_HL_VERSION')
+    denv = env.Clone()
+
+    denv.Append(CPPPATH = ['#/src/include'])
+    array_tgts = denv.SharedObject(['array.c'])
+
+    daos_hl_tgts = array_tgts + denv.SharedObject(Glob("interface/*.c*"))
+
+    Default(daos_hl_tgts)
+    Export('daos_hl_tgts')
+
+#env.AppendUnique(LIBPATH=[Dir('.')])
+if __name__ == 'SCons.Script':
+    scons()
