@@ -91,7 +91,7 @@ def scons():
     config.Finish()
 
     load_sconscripts(arch_dir)
-    print "HERE"
+
     env.Alias('install', '$PREFIX')
 
     try:
