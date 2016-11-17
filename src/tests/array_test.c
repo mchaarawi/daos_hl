@@ -30,7 +30,7 @@
 
 /** number of elements to write to array */
 #define NUM_ELEMS 64
-/** number of memory segments for strided memory access */
+/** num of mem segments for strided access - Must evenly divide NUM_ELEMS */
 #define NUM_SEGS 4
 
 static void contig_mem_contig_arr_io(void **state);

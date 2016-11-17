@@ -75,7 +75,7 @@ daos_hl_extent_same(daos_hl_array_ranges_t *ranges, daos_sg_list_t *sgl)
 	daos_size_t u;
 
 	ranges_len = 0;
-	printf("ARRAY RANGE -----------------------\n");
+	printf("USER ARRAY RANGE -----------------------\n");
 	printf("ranges_nr = %zu\n", ranges->ranges_nr);
 	for (u=0 ; u<ranges->ranges_nr ; u++) {
 		ranges_len += ranges->ranges[u].len;
@@ -106,23 +106,23 @@ compute_dkey(daos_off_t array_i, daos_size_t *num_records, daos_off_t *record_i,
 	daos_off_t 	rel_byte_a; 	/* offset relative to grp */
 	daos_size_t 	dkey_num; 	/* The dkey number for access */
 	daos_size_t 	grp_iter; 	/* round robin iteration number */
-	daos_off_t	dkey_byte_a;	/* relative offset of dkey iter */
+	daos_off_t	dkey_byte_a;	/* address of dkey relative to group */
 
 	byte_a = array_i * DAOS_HL_CELL_SIZE;
 
 	/* Compute dkey group number and address */
 	dkey_grp = byte_a / DAOS_HL_DKEY_GRP_SIZE;
 	dkey_grp_a = dkey_grp * DAOS_HL_DKEY_GRP_SIZE;
-	printf("byte_a %d\n", (int)byte_a);
-	printf("dkey_grp %zu\n", dkey_grp);
-	printf("dkey_grp_a %d\n", (int)dkey_grp_a);
+	//printf("byte_a %d\n", (int)byte_a);
+	//printf("dkey_grp %zu\n", dkey_grp);
+	//printf("dkey_grp_a %d\n", (int)dkey_grp_a);
 
 	/* Compute dkey number within dkey group */
 	rel_byte_a = byte_a - dkey_grp_a;
 	dkey_num = (size_t)(rel_byte_a / DAOS_HL_DKEY_BLOCK_SIZE) %
 		DAOS_HL_DKEY_NUM;
-	printf("rel_byte_a %d\n", (int)rel_byte_a);
-	printf("dkey_num %zu\n", dkey_num);
+	//printf("rel_byte_a %d\n", (int)rel_byte_a);
+	//printf("dkey_num %zu\n", dkey_num);
 
 	/* Compute relative offset/index in dkey */
 	grp_iter = rel_byte_a / DAOS_HL_DKEY_GRP_CHUNK;
@@ -130,20 +130,20 @@ compute_dkey(daos_off_t array_i, daos_size_t *num_records, daos_off_t *record_i,
 		(dkey_num * DAOS_HL_DKEY_BLOCK_SIZE);
 	*record_i = (DAOS_HL_DKEY_BLOCK_SIZE * grp_iter) +
 		(rel_byte_a - dkey_byte_a);
-	printf("grp_iter %zu\n", grp_iter);
-	printf("dkey_byte_a %d\n", (int) dkey_byte_a);
-	printf("record_i %d\n", (int)(*record_i));
+	//printf("grp_iter %zu\n", grp_iter);
+	//printf("dkey_byte_a %d\n", (int)dkey_byte_a);
+	//printf("record_i %d\n", (int)(*record_i));
 
 	/* Number of records to access in current dkey */
 	*num_records = ((grp_iter + 1) * DAOS_HL_DKEY_BLOCK_SIZE) - *record_i;
-	printf("num_records %zu\n", *num_records);
+	//printf("num_records %zu\n", *num_records);
 
 	asprintf(dkey_str, "%zu_%zu", dkey_grp, dkey_num);
 	if (NULL == dkey_str) {
 		D_ERROR("Failed memory allocation\n");
 		return -1;
 	}
-
+	//printf("DKEY for range = %s\n", *dkey_str);
 	return 0;
 }
 
@@ -215,8 +215,15 @@ daos_hl_access_obj(daos_handle_t oh, daos_epoch_t epoch,
 				 * position */
 	daos_size_t 	cur_i; 	/* index into user sgl iovec to track current
 				 * position */
+	daos_size_t 	records;	/* Number of records to read/write in
+					 * current range */
+	daos_off_t 	array_i;	/* object array index of current
+					 * range */
 	daos_size_t	u;
 	int		rc;
+	daos_size_t	num_records;
+	daos_off_t 	record_i;
+	daos_csum_buf_t	null_csum;
 
 	if (NULL == ranges) {
 		D_ERROR("NULL ranges passed\n");
@@ -233,120 +240,219 @@ daos_hl_access_obj(daos_handle_t oh, daos_epoch_t epoch,
 		return -1;
 	}
 
+	daos_csum_set(&null_csum, NULL, 0);
+
 	cur_off = 0;
 	cur_i = 0;
+	u = 0;
+	records = ranges->ranges[0].len;
+	array_i = ranges->ranges[0].index;
 
-	for (u=0 ; u<ranges->ranges_nr ; u++) {
-		daos_size_t records;	/* Number of records to read/write in
-					 * current range */
-		daos_off_t array_i; 	/* object array index of current
-					 * range */
+	/** 
+	 * Loop over every range, but at the same time combine consecutive
+	 * ranges that belong to the same dkey. If the user gives ranges that
+	 * are not increasing in offset, they probably won't be combined unless
+	 * the separating ranges also belong to the same dkey.
+	 */
+	while(u < ranges->ranges_nr) {
+		daos_vec_iod_t 	iod;
+		daos_sg_list_t 	sgl;
+		char		*dkey_str = NULL;
+		daos_key_t 	dkey;
+		char		akey[] = "akey_not_used";
+		bool		user_sgl_used = false;
+		daos_size_t	dkey_records;
+		daos_size_t	i;
 
-		if (0 == ranges->ranges[u].len)
+		if (0 == ranges->ranges[u].len) {
+			u ++;
+			if(u < ranges->ranges_nr) {
+				records = ranges->ranges[u].len;
+				array_i = ranges->ranges[u].index;
+			}
 			continue;
+		}
 
-		records = ranges->ranges[u].len;
-		array_i = ranges->ranges[u].index;
+		/** 
+		 * Compute the dkey given the array index for this range. Also
+		 * compute: - the number of records that the dkey can hold
+		 * starting at the index where we start writing. - the record
+		 * index relative to the dkey.
+		 */
+		rc = compute_dkey(array_i, &num_records, &record_i, &dkey_str);
+		if (rc != 0) {
+			D_ERROR("Failed to compute dkey\n");
+			return rc;
+		}
+		printf("DKEY IOD %s ---------------------------\n", dkey_str);
+		//printf("array_i = %d\t num_records = %zu\t record_i = %d\n",
+		//(int)array_i , num_records, (int)record_i);
+		daos_iov_set(&dkey, (void *)dkey_str, strlen(dkey_str));
 
-		while (records) {
-			daos_vec_iod_t 	iod;
-			daos_recx_t 	rex;
-			daos_sg_list_t 	sgl;
-			daos_size_t	num_records;
-			daos_off_t 	record_i;
-			daos_csum_buf_t	null_csum;
-			char		akey[] = "akey_not_used";
-			char		*dkey_str = NULL;
-			daos_key_t 	dkey;
+		/* set descriptor for KV object */
+		daos_iov_set(&iod.vd_name, (void *)akey, strlen(akey));
+		iod.vd_kcsum = null_csum;
+		iod.vd_nr = 0;
+		iod.vd_csums = NULL;
+		iod.vd_eprs = NULL;
+		iod.vd_recxs = NULL;
+		i = 0;
+		dkey_records = 0;
 
-			daos_csum_set(&null_csum, NULL, 0);
+		/**
+		 * Create the IO descriptor for this dkey. If the entire range
+		 * fits in the dkey, continue to the next range to see if we can
+		 * combine it fully or partially in the current dkey IOD/
+		 */
+		do {
+			daos_off_t 	old_array_i;
 
-			/* 
-			 * For current range, compute dkey of the starting
-			 * offset, the index in that dkey, and how many bytes
-			 * can be accessed in this dkey.
+			iod.vd_nr ++;
+
+			/** add another element to recxs */
+			iod.vd_recxs = (daos_recx_t *)realloc
+				(iod.vd_recxs, sizeof(daos_recx_t) * iod.vd_nr);
+			if (NULL == iod.vd_recxs) {
+				D_ERROR("Failed memory allocation\n");
+				return -1;
+			}
+
+			/** set the record access for this range */
+			iod.vd_recxs[i].rx_rsize = 1;
+			iod.vd_recxs[i].rx_idx = record_i;
+			iod.vd_recxs[i].rx_nr = (num_records > records) ? 
+				records : num_records;
+			printf("Adding Vector %zu to ARRAY IOD (size = %zu, index = %d)\n",
+			       u, iod.vd_recxs[i].rx_nr, (int)iod.vd_recxs[i].rx_idx);
+
+			/** 
+			 * if the current range is bigger than what the dkey can
+			 * hold, update the array index and number of records in
+			 * the current range and break to issue the I/O on the
+			 * current KV.
 			 */
-			rc = compute_dkey(array_i, &num_records, &record_i,
-					  &dkey_str);
+			if(records > num_records) {
+				array_i += num_records;
+				records -= num_records;
+				dkey_records += num_records;
+				break;
+			}
+
+			u ++;
+			i ++;
+			dkey_records += records;
+
+			/** if there are no more ranges to write, then break */
+			if(ranges->ranges_nr <= u)
+				break;
+
+			old_array_i = array_i;
+			records = ranges->ranges[u].len;
+			array_i = ranges->ranges[u].index;
+
+			/** 
+			 * Boundary case where number of records align with the
+			 * end boundary of the KV. break after advancing to the
+			 * next range
+			 */
+			if(records == num_records)
+				break;
+
+			/** continue processing the next range in the current dkey */
+			if(array_i < old_array_i + num_records &&
+			   array_i >= ((old_array_i + num_records) - 
+				       DAOS_HL_DKEY_BLOCK_SIZE)) {
+				char	*dkey_str_tmp = NULL;
+
+				/** 
+				 * verify that the dkey is the same as the one
+				 * we are working on given the array index, and
+				 * also compute the number of records left in
+				 * the dkey and the record indexin the dkey.
+				 */
+				rc = compute_dkey(array_i, &num_records, &record_i,
+						  &dkey_str_tmp);
+				if (rc != 0) {
+					D_ERROR("Failed to compute dkey\n");
+					return rc;
+				}
+
+				assert(0 == strcmp(dkey_str_tmp, dkey_str));
+
+				free(dkey_str_tmp);
+				dkey_str_tmp = NULL;
+			}
+			else {
+				break;
+			}
+		} while(1);
+		printf("END DKEY IOD %s ---------------------------\n", dkey_str);
+
+		/** 
+		 * if the user sgl maps directly to the array range, no need to
+		 * partition it.
+		 */
+		if (1 == ranges->ranges_nr && 1 == user_sgl->sg_nr.num &&
+			dkey_records == ranges->ranges[0].len) {
+			sgl = *user_sgl;
+			user_sgl_used = true;
+		}
+		/** create an sgl from the user sgl for the current IOD */
+		else {
+			daos_size_t s;
+
+			/* set sgl for current dkey */
+			rc = create_sgl(user_sgl, dkey_records, &cur_off, 
+					&cur_i, &sgl);
 			if (rc != 0) {
-				D_ERROR("Failed to compute dkey\n");
+				D_ERROR("Failed to create sgl\n");
 				return rc;
 			}
-
-			daos_iov_set(&dkey, (void *)dkey_str, strlen(dkey_str));
-
-			if(num_records > records)
-				num_records = records;
-
-			/* set descriptor for KV object */
-			daos_iov_set(&iod.vd_name, (void *)akey, strlen(akey));
-			iod.vd_kcsum = null_csum;
-			iod.vd_nr = 1;
-			iod.vd_csums = NULL;
-			iod.vd_eprs = NULL;
-			rex.rx_rsize = 1;
-			rex.rx_idx = record_i;
-			rex.rx_nr = num_records;
-			iod.vd_recxs = &rex;
-			iod.vd_csums = &null_csum;
-
-			if (0 && 1 == ranges->ranges_nr && 1 == user_sgl->sg_nr.num) {
-				sgl = *user_sgl;
+			printf("DKEY SGL -----------------------\n");
+			printf("sg_nr = %u\n", sgl.sg_nr.num);
+			for (s=0 ; s<sgl.sg_nr.num; s++) {
+				printf("%zu: length %zu, Buf %p\n",
+				       s, sgl.sg_iovs[s].iov_len, sgl.sg_iovs[s].iov_buf);
 			}
-			else {
-				daos_size_t s;
-				/* set sgl for current dkey */
-				rc = create_sgl(user_sgl, num_records, &cur_off, 
-						&cur_i, &sgl);
-				if (rc != 0) {
-					D_ERROR("Failed to create sgl\n");
-					return rc;
-				}
-				printf("DKEY SGL -----------------------\n");
-				printf("sg_nr = %u\n", sgl.sg_nr.num);
-				for (s=0 ; s<sgl.sg_nr.num; s++) {
-					printf("%zu: length %zu, Buf %p\n",
-						s, sgl.sg_iovs[s].iov_len, sgl.sg_iovs[s].iov_buf);
-				}
-				printf("------------------------------------\n");
-			}
+			printf("------------------------------------\n");
+		}
 
-			/* issue KV IO to DAOS */
-			if(DAOS_HL_OP_READ == op_type) {
-				rc = daos_obj_fetch(oh, epoch, &dkey, 1, &iod, 
-						    &sgl, NULL, NULL);
-				if (rc != 0) {
-					D_ERROR("KV Fetch failed\n");
-					return rc;
-				}
+		/* issue KV IO to DAOS */
+		if(DAOS_HL_OP_READ == op_type) {
+			rc = daos_obj_fetch(oh, epoch, &dkey, 1, &iod, 
+					    &sgl, NULL, NULL);
+			if (rc != 0) {
+				D_ERROR("KV Fetch failed\n");
+				return rc;
 			}
-			else if(DAOS_HL_OP_WRITE == op_type) {
-				rc = daos_obj_update(oh, epoch, &dkey, 1, &iod, 
-						     &sgl, NULL);
-				if (rc != 0) {
-					D_ERROR("KV Fetch failed\n");
-					return rc;
-				}
+		}
+		else if(DAOS_HL_OP_WRITE == op_type) {
+			rc = daos_obj_update(oh, epoch, &dkey, 1, &iod, 
+					     &sgl, NULL);
+			if (rc != 0) {
+				D_ERROR("KV Update failed\n");
+				return rc;
 			}
-			else {
-				assert(0);
-			}
+		}
+		else {
+			assert(0);
+		}
 
-			if (dkey_str) {
-				free(dkey_str);
-				dkey_str = NULL;
-			}
+		if (dkey_str) {
+			free(dkey_str);
+			dkey_str = NULL;
+		}
 
-			/* update current range */
-			records -= num_records;
-			array_i += num_records;
+		if(!user_sgl_used && sgl.sg_iovs) {
+			free(sgl.sg_iovs);
+			sgl.sg_iovs = NULL;
+		}
 
-			if(sgl.sg_iovs) {
-				free(sgl.sg_iovs);
-				sgl.sg_iovs = NULL;
-			}
-		} /* end while */
-	} /* end for */
+		if(iod.vd_recxs) {
+			free(iod.vd_recxs);
+			iod.vd_recxs = NULL;
+		}
+	} /* end while */
 
 	return 0;
 }
