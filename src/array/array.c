@@ -77,7 +77,7 @@ daos_hl_extent_same(daos_hl_array_ranges_t *ranges, daos_sg_list_t *sgl)
 	ranges_len = 0;
 	printf("USER ARRAY RANGE -----------------------\n");
 	printf("ranges_nr = %zu\n", ranges->ranges_nr);
-	for (u=0 ; u<ranges->ranges_nr ; u++) {
+	for (u = 0 ; u < ranges->ranges_nr ; u++) {
 		ranges_len += ranges->ranges[u].len;
 		printf("%zu: length %zu, index %d\n",
 			u, ranges->ranges[u].len, (int)ranges->ranges[u].index);
@@ -87,7 +87,7 @@ daos_hl_extent_same(daos_hl_array_ranges_t *ranges, daos_sg_list_t *sgl)
 	sgl_len = 0;
 	printf("USER SGL -----------------------\n");
 	printf("sg_nr = %u\n", sgl->sg_nr.num);
-	for (u=0 ; u<sgl->sg_nr.num; u++) {
+	for (u = 0 ; u < sgl->sg_nr.num; u++) {
 		sgl_len += sgl->sg_iovs[u].iov_len;
 		printf("%zu: length %zu, Buf %p\n",
 			u, sgl->sg_iovs[u].iov_len, sgl->sg_iovs[u].iov_buf);
@@ -410,7 +410,7 @@ daos_hl_access_obj(daos_handle_t oh, daos_epoch_t epoch,
 			}
 			printf("DKEY SGL -----------------------\n");
 			printf("sg_nr = %u\n", sgl.sg_nr.num);
-			for (s=0 ; s<sgl.sg_nr.num; s++) {
+			for (s = 0; s < sgl.sg_nr.num; s++) {
 				printf("%zu: length %zu, Buf %p\n",
 				       s, sgl.sg_iovs[s].iov_len, sgl.sg_iovs[s].iov_buf);
 			}
