@@ -26,15 +26,14 @@
  * src/array/array.c
  */
 
-#include <assert.h>
-#include <stdio.h>
 #include <daos_hl.h>
+#include <daos_hl/common.h>
 
 /** MSC - Those need to be configurable later through hints */
 /** Array cell size - curently a byte array i.e. 1 byte */
 #define DAOS_HL_CELL_SIZE 1
 /** Bytes to store in a dkey before moving to the next one in the group */
-#define DAOS_HL_DKEY_BLOCK_SIZE		1048576
+#define DAOS_HL_DKEY_BLOCK_SIZE		16//1048576
 /** Num blocks to store in each dkey before creating the next group */
 #define DAOS_HL_DKEY_NUM_BLOCKS		3
 /** Number of dkeys in a group */
@@ -66,6 +65,66 @@ daos_hl_access_obj(daos_handle_t oh, daos_epoch_t epoch,
 		   daos_hl_array_ranges_t *ranges, daos_sg_list_t *sgl,
 		   daos_csum_buf_t *csums, daos_event_t *ev,
 		   daos_hl_op_type_t op_type);
+
+#if 0
+static int
+daos_hl_parse_env_vars(void)
+{
+	char *cell_size_val = NULL;
+	char *dkey_block_len_val = NULL;
+	char *dkey_num_blocks_val = NULL;
+	char *num_dkeys_val = NULL;
+
+	cell_size_val = getenv ("DAOS_HL_ARRAY_CELL_SIZE");
+	if (cell_size_val) {
+		sscanf(cell_size_val, "%zu", &cell_size_g);
+
+		printf("DAOS_HL_ARRAY_CELL_SIZE = %s %zu\n",
+		       cell_size_val, cell_size_g);
+
+		if (cell_size_g != 1) {
+			D_ERROR("Only a 1 byte cell size is supported.\n");
+			return -1;
+		}
+	}
+	else {
+		cell_size_g = DAOS_HL_CELL_SIZE;
+	}
+
+	dkey_block_len_val = getenv ("DAOS_HL_ARRAY_DKEY_BLOCK_LEN");
+	if (dkey_block_len_val) {
+		sscanf(dkey_block_len_val, "%zu", &dkey_block_len_g);
+
+		printf("DAOS_HL_ARRAY_DKEY_BLOCK_LEN = %s %zu\n",
+		       dkey_block_len_val, dkey_block_len_g);
+	}
+	else {
+		dkey_block_len_g = DAOS_HL_DKEY_BLOCK_SIZE;
+	}
+
+	dkey_num_blocks_val = getenv ("DAOS_HL_ARRAY_DKEY_NUM_BLOCKS");
+	if (dkey_num_blocks_val) {
+		sscanf(dkey_num_blocks_val, "%zu", &dkey_num_blocks_g);
+
+		printf("DAOS_HL_ARRAY_DKEY_NUM_BLOCKS = %s %zu\n",
+		       dkey_num_blocks_val, dkey_num_blocks_g);
+	}
+	else {
+		dkey_num_blocks_g = DAOS_HL_DKEY_NUM_BLOCKS;
+	}
+
+	num_dkeys_val = getenv ("DAOS_HL_ARRAY_NUM_DKEYS");
+	if (num_dkeys_val) {
+		sscanf(num_dkeys_val, "%zu", &num_dkeys_g);
+
+		printf("DAOS_HL_ARRAY_NUM_DKEYS = %s %zu\n",
+		       num_dkeys_val, num_dkeys_g);
+	}
+	else {
+		num_dkeys_g = DAOS_HL_DKEY_NUM;
+	}
+}
+#endif
 
 static int
 daos_hl_extent_same(daos_hl_array_ranges_t *ranges, daos_sg_list_t *sgl)
@@ -167,7 +226,7 @@ create_sgl(daos_sg_list_t *user_sgl, daos_size_t num_records,
 	 * satisfy the number of records to read/write from the KV object
 	 */
 	do {
-		assert(user_sgl->sg_nr.num > cur_i);
+		D_ASSERT(user_sgl->sg_nr.num > cur_i);
 
 		sgl->sg_nr.num ++;
 		sgl->sg_iovs = (daos_iov_t *)realloc(sgl->sg_iovs,
@@ -237,8 +296,16 @@ daos_hl_access_obj(daos_handle_t oh, daos_epoch_t epoch,
 	rc = daos_hl_extent_same(ranges, user_sgl);
 	if (1 != rc) {
 		D_ERROR("Unequal extents of memory and array descriptors\n");
-		return -1;
+		return rc;
 	}
+
+#if 0
+	rc = daos_hl_parse_env_vars();
+	if (0 != rc) {
+		D_ERROR("Array read failed (%d)\n", rc);
+		return rc;
+	}
+#endif
 
 	daos_csum_set(&null_csum, NULL, 0);
 
@@ -377,7 +444,7 @@ daos_hl_access_obj(daos_handle_t oh, daos_epoch_t epoch,
 					return rc;
 				}
 
-				assert(0 == strcmp(dkey_str_tmp, dkey_str));
+				D_ASSERT(0 == strcmp(dkey_str_tmp, dkey_str));
 
 				free(dkey_str_tmp);
 				dkey_str_tmp = NULL;
@@ -422,7 +489,8 @@ daos_hl_access_obj(daos_handle_t oh, daos_epoch_t epoch,
 			rc = daos_obj_fetch(oh, epoch, &dkey, 1, &iod, 
 					    &sgl, NULL, NULL);
 			if (rc != 0) {
-				D_ERROR("KV Fetch failed\n");
+				D_ERROR("KV Fetch of dkey %s failed (%d)\n", 
+					dkey_str, rc);
 				return rc;
 			}
 		}
@@ -430,12 +498,13 @@ daos_hl_access_obj(daos_handle_t oh, daos_epoch_t epoch,
 			rc = daos_obj_update(oh, epoch, &dkey, 1, &iod, 
 					     &sgl, NULL);
 			if (rc != 0) {
-				D_ERROR("KV Update failed\n");
+				D_ERROR("KV Update of dkey %s failed (%d)\n", 
+					dkey_str, rc);
 				return rc;
 			}
 		}
 		else {
-			assert(0);
+			D_ASSERTF(0, "Invalid array operation.\n");
 		}
 
 		if (dkey_str) {
@@ -467,8 +536,8 @@ daos_hl_array_read(daos_handle_t oh, daos_epoch_t epoch,
 	rc = daos_hl_access_obj(oh, epoch, ranges, sgl, csums, ev,
 				DAOS_HL_OP_READ);
 	if (0 != rc) {
-		D_ERROR("Array read failed.\n");
-		return -1;
+		D_ERROR("Array read failed (%d)\n", rc);
+		return rc;
 	}
 	
 	return rc;
@@ -484,9 +553,65 @@ daos_hl_array_write(daos_handle_t oh, daos_epoch_t epoch,
 	rc = daos_hl_access_obj(oh, epoch, ranges, sgl, csums, ev,
 				DAOS_HL_OP_WRITE);
 	if (0 != rc) {
-		D_ERROR("Array write failed\n");
-		return -1;
+		D_ERROR("Array write failed (%d)\n", rc);
+		return rc;
 	}
 	
+	return rc;
+}
+
+#define ENUM_KEY_BUF	32
+#define ENUM_DESC_BUF	512
+#define ENUM_DESC_NR	5
+
+int
+daos_hl_array_get_size(daos_handle_t oh, daos_epoch_t epoch, daos_size_t *size,
+		       daos_event_t *ev)
+{
+	uint32_t 	key_nr, i, j;
+	daos_sg_list_t  sgl;
+	daos_hash_out_t hash_out;
+	char		key[ENUM_KEY_BUF];
+	daos_key_desc_t kds[ENUM_DESC_NR];
+	daos_size_t 	len = ENUM_DESC_BUF;
+	char		*ptr;
+	char		*buf;
+	int 		rc;
+
+	memset(&hash_out, 0, sizeof(hash_out));
+	buf = malloc(ENUM_DESC_BUF);
+
+	/** enumerate records */
+	for (i = ENUM_DESC_NR, key_nr = 0; !daos_hash_is_eof(&hash_out);
+	     i = ENUM_DESC_NR) {
+		daos_iov_t 	iov;
+
+		memset(buf, 0, ENUM_DESC_BUF);
+
+		sgl.sg_nr.num = 1;
+		daos_iov_set(&iov, buf, len);
+		sgl.sg_iovs = &iov;
+
+		rc = daos_obj_list_dkey(oh, epoch, &i, kds, &sgl, &hash_out, NULL);
+		if (0 != rc) {
+			D_ERROR("DKey list failed (%d)\n", rc);
+			return rc;
+		}
+
+		if (i == 0)
+			continue; /* loop should break for EOF */
+
+		key_nr += i;
+		for (ptr = buf, j = 0; j < i; j++) {
+			snprintf(key, kds[j].kd_key_len + 1, ptr);
+			printf("%d: key %s len %d\n", j, key,
+				      (int)kds[j].kd_key_len);
+			ptr += kds[j].kd_key_len;
+		}
+	}
+
+	free(buf);
+	buf = NULL;
+
 	return rc;
 }

@@ -398,7 +398,7 @@ read_empty_records(void **state)
 			arg->myrank * sizeof(int);
 	}
 	daos_iov_set(&iov, rbuf, NUM_ELEMS * sizeof(int));
-	rc = daos_hl_array_read(oh, 0, &ranges, &sgl, NULL, NULL);
+	//rc = daos_hl_array_read(oh, 0, &ranges, &sgl, NULL, NULL);
 	assert_int_equal(rc, 0);
 
 	/** Verify data */
@@ -411,6 +411,9 @@ read_empty_records(void **state)
 	free(rbuf);
 	free(wbuf);
 	free(ranges.ranges);
+
+	rc = daos_hl_array_get_size(oh, 0, NULL, NULL);
+	assert_int_equal(rc, 0);
 
 	rc = daos_obj_close(oh, NULL);
 	assert_int_equal(rc, 0);

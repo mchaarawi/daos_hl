@@ -33,13 +33,6 @@
 #include <daos_types.h>
 #include <daos_api.h>
 
-#define D_ERROR(fmt, ...)						\
-do {									\
-	fprintf(stderr, "%s:%d:%d:%s() " fmt, __FILE__, getpid(),	\
-		__LINE__, __func__, ## __VA_ARGS__);			\
-	fflush(stderr);							\
-} while (0)
-
 typedef struct {
 	daos_size_t		len;
 	daos_off_t		index;
@@ -138,4 +131,7 @@ daos_hl_array_write(daos_handle_t oh, daos_epoch_t epoch,
 		   daos_hl_array_ranges_t *ranges, daos_sg_list_t *sgl,
 		   daos_csum_buf_t *csums, daos_event_t *ev);
 
+int
+daos_hl_array_get_size(daos_handle_t oh, daos_epoch_t epoch, daos_size_t *size,
+		       daos_event_t *ev);
 #endif /* __DAOS_HL_API_H__ */
