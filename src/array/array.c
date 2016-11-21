@@ -33,7 +33,7 @@
 /** Array cell size - curently a byte array i.e. 1 byte */
 #define DAOS_HL_CELL_SIZE 1
 /** Bytes to store in a dkey before moving to the next one in the group */
-#define DAOS_HL_DKEY_BLOCK_SIZE		16//1048576
+#define DAOS_HL_DKEY_BLOCK_SIZE		1048576
 /** Num blocks to store in each dkey before creating the next group */
 #define DAOS_HL_DKEY_NUM_BLOCKS		3
 /** Number of dkeys in a group */
@@ -568,7 +568,7 @@ int
 daos_hl_array_get_size(daos_handle_t oh, daos_epoch_t epoch, daos_size_t *size,
 		       daos_event_t *ev)
 {
-	uint32_t 	key_nr, i, j;
+	uint32_t	key_nr, i, j;
 	daos_sg_list_t  sgl;
 	daos_hash_out_t hash_out;
 	char		key[ENUM_KEY_BUF];
@@ -576,10 +576,20 @@ daos_hl_array_get_size(daos_handle_t oh, daos_epoch_t epoch, daos_size_t *size,
 	daos_size_t 	len = ENUM_DESC_BUF;
 	char		*ptr;
 	char		*buf;
+	uint32_t	max_hi, max_lo;
+	daos_off_t 	max_offset;
+	daos_size_t	max_iter;
 	int 		rc;
 
 	memset(&hash_out, 0, sizeof(hash_out));
 	buf = malloc(ENUM_DESC_BUF);
+	if (NULL == buf) {
+		D_ERROR("Failed memory allocation\n");
+		return -1;
+	}
+
+	max_hi = 0;
+	max_lo = 0;
 
 	/** enumerate records */
 	for (i = ENUM_DESC_NR, key_nr = 0; !daos_hash_is_eof(&hash_out);
@@ -603,12 +613,60 @@ daos_hl_array_get_size(daos_handle_t oh, daos_epoch_t epoch, daos_size_t *size,
 
 		key_nr += i;
 		for (ptr = buf, j = 0; j < i; j++) {
+			uint32_t hi, lo;
+
 			snprintf(key, kds[j].kd_key_len + 1, ptr);
 			printf("%d: key %s len %d\n", j, key,
 				      (int)kds[j].kd_key_len);
+
+			/** Keep a record of the highest dkey */
+			sscanf(key, "%u_%u", &hi, &lo);
+			if(hi >= max_hi) {
+				max_hi = hi;
+				if(lo > max_lo)
+					max_lo = lo;
+			}
 			ptr += kds[j].kd_key_len;
 		}
 	}
+
+	printf("MAX DKEY = (%u %u)\n", max_hi, max_lo);
+
+	/* 
+	 * Go through all the dkeys in the current group (maxhi_x) and get the
+	 * highest index to determine which dkey in the group has the highest
+	 * bit.
+	 */
+	max_iter = 0;
+	max_offset = 0;
+
+	for (i = 0 ; i <= max_lo; i++) {
+		daos_off_t offset, index_hi = 0;
+		daos_size_t iter;
+
+		sprintf(key, "%u_%u", max_hi, i);
+		printf("checking offset in dkey %s\n", key);
+		/** retrieve the highest index */
+		/** MSC - need new functionality from DAOS to retrieve that. */
+
+		/** Compute the iteration where the highest record is stored */
+		iter = index_hi / DAOS_HL_DKEY_BLOCK_SIZE;
+
+		offset = iter * DAOS_HL_DKEY_GRP_CHUNK + 
+			(index_hi - iter * DAOS_HL_DKEY_BLOCK_SIZE);
+
+		if (iter == max_iter || max_iter == 0) {
+			//D_ASSERT(offset > max_offset);
+			max_offset = offset;
+			max_iter = iter;
+		}
+		else {
+			if (i < max_lo)
+				break;
+		}
+	}
+
+	*size = max_hi * DAOS_HL_DKEY_GRP_SIZE + max_offset;
 
 	free(buf);
 	buf = NULL;

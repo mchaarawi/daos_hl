@@ -321,6 +321,7 @@ read_empty_records(void **state)
 	daos_iov_t	iov;
 	int		*wbuf = NULL, *rbuf = NULL;
 	daos_size_t 	i;
+	daos_size_t	array_size;
 	daos_event_t	ev;
 	int		rc;
 
@@ -412,8 +413,9 @@ read_empty_records(void **state)
 	free(wbuf);
 	free(ranges.ranges);
 
-	rc = daos_hl_array_get_size(oh, 0, NULL, NULL);
+	rc = daos_hl_array_get_size(oh, 0, &array_size, NULL);
 	assert_int_equal(rc, 0);
+	printf("array size = %zu\n", array_size);
 
 	rc = daos_obj_close(oh, NULL);
 	assert_int_equal(rc, 0);
