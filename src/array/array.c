@@ -33,7 +33,7 @@
 /** Array cell size - curently a byte array i.e. 1 byte */
 #define DAOS_HL_CELL_SIZE 1
 /** Bytes to store in a dkey before moving to the next one in the group */
-#define DAOS_HL_DKEY_BLOCK_SIZE		1048576
+#define DAOS_HL_DKEY_BLOCK_SIZE		16//1048576
 /** Num blocks to store in each dkey before creating the next group */
 #define DAOS_HL_DKEY_NUM_BLOCKS		3
 /** Number of dkeys in a group */
@@ -65,6 +65,10 @@ daos_hl_access_obj(daos_handle_t oh, daos_epoch_t epoch,
 		   daos_hl_array_ranges_t *ranges, daos_sg_list_t *sgl,
 		   daos_csum_buf_t *csums, daos_event_t *ev,
 		   daos_hl_op_type_t op_type);
+
+static int
+get_highest_dkey(daos_handle_t oh, daos_epoch_t epoch, daos_event_t *ev,
+		 uint32_t *max_hi, uint32_t *max_lo);
 
 #if 0
 static int
@@ -240,8 +244,10 @@ create_sgl(daos_sg_list_t *user_sgl, daos_size_t num_records,
 		sgl->sg_iovs[k].iov_buf = user_sgl->sg_iovs[cur_i].iov_buf +
 			cur_off;
 
-		if (rem_records >= (user_sgl->sg_iovs[cur_i].iov_len - cur_off)) {
-			sgl->sg_iovs[k].iov_len = user_sgl->sg_iovs[cur_i].iov_len - cur_off;
+		if (rem_records >= 
+		    (user_sgl->sg_iovs[cur_i].iov_len - cur_off)) {
+			sgl->sg_iovs[k].iov_len = 
+				user_sgl->sg_iovs[cur_i].iov_len - cur_off;
 			cur_i ++;
 			cur_off = 0;
 		}
@@ -437,8 +443,8 @@ daos_hl_access_obj(daos_handle_t oh, daos_epoch_t epoch,
 				 * also compute the number of records left in
 				 * the dkey and the record indexin the dkey.
 				 */
-				rc = compute_dkey(array_i, &num_records, &record_i,
-						  &dkey_str_tmp);
+				rc = compute_dkey(array_i, &num_records, 
+						  &record_i, &dkey_str_tmp);
 				if (rc != 0) {
 					D_ERROR("Failed to compute dkey\n");
 					return rc;
@@ -564,9 +570,9 @@ daos_hl_array_write(daos_handle_t oh, daos_epoch_t epoch,
 #define ENUM_DESC_BUF	512
 #define ENUM_DESC_NR	5
 
-int
-daos_hl_array_get_size(daos_handle_t oh, daos_epoch_t epoch, daos_size_t *size,
-		       daos_event_t *ev)
+static int
+get_highest_dkey(daos_handle_t oh, daos_epoch_t epoch, daos_event_t *ev,
+		 uint32_t *max_hi, uint32_t *max_lo)
 {
 	uint32_t	key_nr, i, j;
 	daos_sg_list_t  sgl;
@@ -576,10 +582,7 @@ daos_hl_array_get_size(daos_handle_t oh, daos_epoch_t epoch, daos_size_t *size,
 	daos_size_t 	len = ENUM_DESC_BUF;
 	char		*ptr;
 	char		*buf;
-	uint32_t	max_hi, max_lo;
-	daos_off_t 	max_offset;
-	daos_size_t	max_iter;
-	int 		rc;
+	int             rc = 0;
 
 	memset(&hash_out, 0, sizeof(hash_out));
 	buf = malloc(ENUM_DESC_BUF);
@@ -588,8 +591,8 @@ daos_hl_array_get_size(daos_handle_t oh, daos_epoch_t epoch, daos_size_t *size,
 		return -1;
 	}
 
-	max_hi = 0;
-	max_lo = 0;
+	*max_hi = 0;
+	*max_lo = 0;
 
 	/** enumerate records */
 	for (i = ENUM_DESC_NR, key_nr = 0; !daos_hash_is_eof(&hash_out);
@@ -602,7 +605,8 @@ daos_hl_array_get_size(daos_handle_t oh, daos_epoch_t epoch, daos_size_t *size,
 		daos_iov_set(&iov, buf, len);
 		sgl.sg_iovs = &iov;
 
-		rc = daos_obj_list_dkey(oh, epoch, &i, kds, &sgl, &hash_out, NULL);
+		rc = daos_obj_list_dkey(oh, epoch, &i, kds, &sgl, &hash_out,
+					ev);
 		if (0 != rc) {
 			D_ERROR("DKey list failed (%d)\n", rc);
 			return rc;
@@ -621,13 +625,35 @@ daos_hl_array_get_size(daos_handle_t oh, daos_epoch_t epoch, daos_size_t *size,
 
 			/** Keep a record of the highest dkey */
 			sscanf(key, "%u_%u", &hi, &lo);
-			if(hi >= max_hi) {
-				max_hi = hi;
-				if(lo > max_lo)
-					max_lo = lo;
+			if(hi >= *max_hi) {
+				*max_hi = hi;
+				if(lo > *max_lo)
+					*max_lo = lo;
 			}
 			ptr += kds[j].kd_key_len;
 		}
+	}
+
+	free(buf);
+	buf = NULL;
+
+	return rc;
+}
+
+int
+daos_hl_array_get_size(daos_handle_t oh, daos_epoch_t epoch, daos_size_t *size,
+		       daos_event_t *ev)
+{
+	uint32_t	i;
+	uint32_t	max_hi, max_lo;
+	daos_off_t 	max_offset;
+	daos_size_t	max_iter;
+	int 		rc;
+
+	rc = get_highest_dkey(oh, epoch, NULL, &max_hi, &max_lo);
+	if (0 != rc) {
+		D_ERROR("Failed to retrieve max dkey (%d)\n", rc);
+		return rc;
 	}
 
 	printf("MAX DKEY = (%u %u)\n", max_hi, max_lo);
@@ -641,8 +667,9 @@ daos_hl_array_get_size(daos_handle_t oh, daos_epoch_t epoch, daos_size_t *size,
 	max_offset = 0;
 
 	for (i = 0 ; i <= max_lo; i++) {
-		daos_off_t offset, index_hi = 0;
-		daos_size_t iter;
+		daos_off_t 	offset, index_hi = 0;
+		daos_size_t 	iter;
+		char		key[ENUM_KEY_BUF];
 
 		sprintf(key, "%u_%u", max_hi, i);
 		printf("checking offset in dkey %s\n", key);
@@ -668,8 +695,119 @@ daos_hl_array_get_size(daos_handle_t oh, daos_epoch_t epoch, daos_size_t *size,
 
 	*size = max_hi * DAOS_HL_DKEY_GRP_SIZE + max_offset;
 
+	return rc;
+} /* end daos_hl_array_get_size */
+
+int
+daos_hl_array_set_size(daos_handle_t oh, daos_epoch_t epoch, daos_size_t size,
+		       daos_event_t *ev)
+{
+	char            *dkey_str = NULL;
+	daos_size_t	num_records;
+	daos_off_t	record_i;
+	uint32_t	new_hi, new_lo;
+	uint32_t	key_nr, i, j;
+	daos_sg_list_t  sgl;
+	daos_hash_out_t hash_out;
+	char		key[ENUM_KEY_BUF];
+	daos_key_desc_t kds[ENUM_DESC_NR];
+	daos_size_t 	len = ENUM_DESC_BUF;
+	char		*ptr;
+	char		*buf;
+	bool		shrinking;
+	int 		rc;
+
+	rc = compute_dkey(size, &num_records, &record_i, &dkey_str);
+	if (rc != 0) {
+		D_ERROR("Failed to compute dkey\n");
+		return rc;
+	}
+	sscanf(key, "%u_%u", &new_hi, &new_lo);
+
+	memset(&hash_out, 0, sizeof(hash_out));
+	buf = malloc(ENUM_DESC_BUF);
+	if (NULL == buf) {
+		D_ERROR("Failed memory allocation\n");
+		return -1;
+	}
+
+	shrinking = false;
+
+	for (i = ENUM_DESC_NR, key_nr = 0; !daos_hash_is_eof(&hash_out);
+	     i = ENUM_DESC_NR) {
+		daos_iov_t 	iov;
+
+		memset(buf, 0, ENUM_DESC_BUF);
+
+		sgl.sg_nr.num = 1;
+		daos_iov_set(&iov, buf, len);
+		sgl.sg_iovs = &iov;
+
+		rc = daos_obj_list_dkey(oh, epoch, &i, kds, &sgl, &hash_out, ev);
+		if (0 != rc) {
+			D_ERROR("DKey list failed (%d)\n", rc);
+			return rc;
+		}
+
+		if (i == 0)
+			continue; /* loop should break for EOF */
+
+		key_nr += i;
+		for (ptr = buf, j = 0; j < i; j++) {
+			uint32_t hi, lo;
+
+			snprintf(key, kds[j].kd_key_len + 1, ptr);
+			printf("%d: key %s len %d\n", j, key,
+				      (int)kds[j].kd_key_len);
+
+			/** Keep a record of the highest dkey */
+			sscanf(key, "%u_%u", &hi, &lo);
+			if (hi >= new_hi) {
+				/** Punch this entire dkey */
+				if (lo > new_lo) {
+					shrinking = true;
+				}
+				/** 
+				 * Punch only records that are at higher index
+				 * than size.
+				 */
+				else if (lo == new_lo) {
+					shrinking = true;
+				}
+			}
+			ptr += kds[j].kd_key_len;
+		}
+	}
+
+	/** if array is smaller, write a record at the new size */
+	if (!shrinking) {
+		daos_hl_array_ranges_t ranges;
+		daos_hl_range_t rg;
+		daos_sg_list_t 	sgl;
+		daos_iov_t	iov;
+		uint8_t 	val = 0;
+
+		/** set array location */
+		ranges.ranges_nr = 1;
+		rg.len = DAOS_HL_CELL_SIZE;
+		rg.index = size - DAOS_HL_CELL_SIZE;
+		ranges.ranges = &rg;
+
+		/** set memory location */
+		sgl.sg_nr.num = 1;
+		daos_iov_set(&iov, &val, 1);
+		sgl.sg_iovs = &iov;
+
+		/** Write */
+		rc = daos_hl_array_write(oh, 0, &ranges, &sgl, NULL, NULL);
+		if (0 != rc) {
+			D_ERROR("Failed to write array (%d)\n", rc);
+			return rc;
+		}
+	}
+
 	free(buf);
 	buf = NULL;
 
 	return rc;
-}
+} /* end daos_hl_array_set_size */

@@ -134,4 +134,8 @@ daos_hl_array_write(daos_handle_t oh, daos_epoch_t epoch,
 int
 daos_hl_array_get_size(daos_handle_t oh, daos_epoch_t epoch, daos_size_t *size,
 		       daos_event_t *ev);
+int
+daos_hl_array_set_size(daos_handle_t oh, daos_epoch_t epoch, daos_size_t size,
+		       daos_event_t *ev);
+
 #endif /* __DAOS_HL_API_H__ */

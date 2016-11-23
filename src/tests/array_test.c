@@ -337,10 +337,17 @@ read_empty_records(void **state)
 	rc = daos_obj_open(arg->coh, oid, 0, 0, &oh, NULL);
 	assert_int_equal(rc, 0);
 
+	rc = daos_hl_array_set_size(oh, 0, 10485, NULL);
+	assert_int_equal(rc, 0);
+
+	rc = daos_hl_array_get_size(oh, 0, &array_size, NULL);
+	assert_int_equal(rc, 0);
+	printf("array size = %zu\n", array_size);
+
 	/** Allocate and set buffer */
-	wbuf = malloc(NUM_ELEMS*sizeof(int));
+	wbuf = malloc(NUM_ELEMS * sizeof(int));
 	assert_non_null(wbuf);
-	rbuf = malloc(NUM_ELEMS*sizeof(int));
+	rbuf = malloc(NUM_ELEMS * sizeof(int));
 	assert_non_null(rbuf);
 	for (i = 0; i < NUM_ELEMS; i++) {
 		wbuf[i] = i+1;
