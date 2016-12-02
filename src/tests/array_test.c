@@ -33,19 +33,32 @@
 /** num of mem segments for strided access - Must evenly divide NUM_ELEMS */
 #define NUM_SEGS 4
 
+#define DTS_OCLASS_DEF		DAOS_OC_REPL_MAX_RW
+
+static uint64_t obj_id_gen	= 1;
+
 static void contig_mem_contig_arr_io(void **state);
 static void contig_mem_str_arr_io(void **state);
 static void str_mem_str_arr_io(void **state);
 static void read_empty_records(void **state);
 
-static inline void
-obj_random(test_arg_t *arg, daos_obj_id_t *oid)
+static daos_obj_id_t
+dts_oid_gen(uint16_t oclass, unsigned seed)
 {
-        /** choose random object */
-	oid->lo = rand();
-        oid->mid = rand();
-        oid->hi = rand();
-        daos_obj_id_generate(oid, DAOS_OC_REPLICA_RW);
+	daos_obj_id_t	oid;
+
+	srand(time(NULL));
+
+	if (oclass == 0)
+		oclass = DTS_OCLASS_DEF;
+
+	/* generate an unique and not scary long object ID */
+	oid.lo	= obj_id_gen++;
+	oid.mid	= seed;
+	oid.hi	= rand() % 100;
+	daos_obj_id_generate(&oid, oclass);
+
+	return oid;
 }
 
 static void
@@ -63,8 +76,7 @@ contig_mem_contig_arr_io(void **state)
 	daos_event_t	ev;
 	int		rc;
 
-	/** choose random object */
-	obj_random(arg, &oid);
+	oid = dts_oid_gen(DAOS_OC_REPL_MAX_RW, arg->myrank);
 
 	if (arg->async) {
 		rc = daos_event_init(&ev, arg->eq, NULL);
@@ -141,8 +153,7 @@ contig_mem_str_arr_io(void **state)
 	daos_event_t	ev;
 	int		rc;
 
-	/** choose random object */
-	obj_random(arg, &oid);
+	oid = dts_oid_gen(DAOS_OC_REPL_MAX_RW, arg->myrank);
 
 	if (arg->async) {
 		rc = daos_event_init(&ev, arg->eq, NULL);
@@ -224,8 +235,7 @@ str_mem_str_arr_io(void **state)
 	daos_event_t	ev;
 	int		rc;
 
-	/** choose random object */
-	obj_random(arg, &oid);
+	oid = dts_oid_gen(DAOS_OC_REPL_MAX_RW, arg->myrank);
 
 	if (arg->async) {
 		rc = daos_event_init(&ev, arg->eq, NULL);
@@ -325,8 +335,7 @@ read_empty_records(void **state)
 	daos_event_t	ev;
 	int		rc;
 
-	/** choose random object */
-	obj_random(arg, &oid);
+	oid = dts_oid_gen(DAOS_OC_REPL_MAX_RW, arg->myrank);
 
 	if (arg->async) {
 		rc = daos_event_init(&ev, arg->eq, NULL);
