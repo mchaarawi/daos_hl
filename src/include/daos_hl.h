@@ -31,6 +31,7 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <daos_types.h>
+#include <daos_event.h>
 #include <daos_api.h>
 
 typedef struct {
@@ -45,21 +46,6 @@ typedef struct {
 	/** Array of index/len pairs */ 
 	daos_hl_range_t	       *ranges;
 } daos_hl_array_ranges_t;
-
-/* MSC - Think about using the daos sgl or a simplified one like the following */
-/** iovec for memory buffer */
-typedef struct {
-	/** buffer address */
-	void	       *iov_buf;
-	/** length */
-	daos_size_t	iov_buf_len;
-} daos_hl_iov_t;
-
-/** Scatter/gather list for memory buffers */
-typedef struct {
-	daos_size_t	 sg_nr;
-	daos_hl_iov_t	*sg_iovs;
-} daos_hl_sgl_t;
 
 /**
  * Read data from an array object.

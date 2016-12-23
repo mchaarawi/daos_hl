@@ -73,15 +73,10 @@ contig_mem_contig_arr_io(void **state)
 	daos_iov_t	iov;
 	int		*wbuf = NULL, *rbuf = NULL;
 	daos_size_t 	i;
-	daos_event_t	ev;
+	daos_event_t	ev, *evp;
 	int		rc;
 
 	oid = dts_oid_gen(DAOS_OC_REPL_MAX_RW, arg->myrank);
-
-	if (arg->async) {
-		rc = daos_event_init(&ev, arg->eq, NULL);
-		assert_int_equal(rc, 0);
-	}
 
 	/** open the object */
 	rc = daos_obj_open(arg->coh, oid, 0, 0, &oh, NULL);
@@ -94,7 +89,6 @@ contig_mem_contig_arr_io(void **state)
 	assert_non_null(rbuf);
 	for (i = 0; i < NUM_ELEMS; i++)
 		wbuf[i] = i+1;
-	printf("wbuf = %p, rbuf = %p\n", wbuf, rbuf);
 
 	/** set array location */
 	ranges.ranges_nr = 1;
@@ -108,14 +102,44 @@ contig_mem_contig_arr_io(void **state)
 	sgl.sg_iovs = &iov;
 
 	/** Write */
-	rc = daos_hl_array_write(oh, 0, &ranges, &sgl, NULL, NULL);
+	if (arg->async) {
+		rc = daos_event_init(&ev, arg->eq, NULL);
+		assert_int_equal(rc, 0);
+	}
+	rc = daos_hl_array_write(oh, 0, &ranges, &sgl, NULL, 
+				 arg->async ? &ev : NULL);
 	assert_int_equal(rc, 0);
+	if (arg->async) {
+		/** Wait for completion */
+		rc = daos_eq_poll(arg->eq, 0, DAOS_EQ_WAIT, 1, &evp);
+		assert_int_equal(rc, 1);
+		assert_ptr_equal(evp, &ev);
+		assert_int_equal(evp->ev_error, 0);
+
+		rc = daos_event_fini(&ev);
+		assert_int_equal(rc, 0);
+	}
 
 	/** Read */
+	if (arg->async) {
+		rc = daos_event_init(&ev, arg->eq, NULL);
+		assert_int_equal(rc, 0);
+	}
 	daos_iov_set(&iov, rbuf, NUM_ELEMS * sizeof(int));
 	sgl.sg_iovs = &iov;
-	rc = daos_hl_array_read(oh, 0, &ranges, &sgl, NULL, NULL);
+	rc = daos_hl_array_read(oh, 0, &ranges, &sgl, NULL,
+				arg->async ? &ev : NULL);
 	assert_int_equal(rc, 0);
+	if (arg->async) {
+		/** Wait for completion */
+		rc = daos_eq_poll(arg->eq, 0, DAOS_EQ_WAIT, 1, &evp);
+		assert_int_equal(rc, 1);
+		assert_ptr_equal(evp, &ev);
+		assert_int_equal(evp->ev_error, 0);
+
+		rc = daos_event_fini(&ev);
+		assert_int_equal(rc, 0);
+	}
 
 	/** Verify data */
 	for (i = 0; i < NUM_ELEMS; i++) {
@@ -150,15 +174,10 @@ contig_mem_str_arr_io(void **state)
 	daos_iov_t	iov;
 	int		*wbuf = NULL, *rbuf = NULL;
 	daos_size_t 	i;
-	daos_event_t	ev;
+	daos_event_t	ev, *evp;
 	int		rc;
 
 	oid = dts_oid_gen(DAOS_OC_REPL_MAX_RW, arg->myrank);
-
-	if (arg->async) {
-		rc = daos_event_init(&ev, arg->eq, NULL);
-		assert_int_equal(rc, 0);
-	}
 
 	/** open the object */
 	rc = daos_obj_open(arg->coh, oid, 0, 0, &oh, NULL);
@@ -191,13 +210,43 @@ contig_mem_str_arr_io(void **state)
 	sgl.sg_iovs = &iov;
 
 	/** Write */
-	rc = daos_hl_array_write(oh, 0, &ranges, &sgl, NULL, NULL);
+	if (arg->async) {
+		rc = daos_event_init(&ev, arg->eq, NULL);
+		assert_int_equal(rc, 0);
+	}
+	rc = daos_hl_array_write(oh, 0, &ranges, &sgl, NULL,
+				 arg->async ? &ev : NULL);
 	assert_int_equal(rc, 0);
+	if (arg->async) {
+		/** Wait for completion */
+		rc = daos_eq_poll(arg->eq, 0, DAOS_EQ_WAIT, 1, &evp);
+		assert_int_equal(rc, 1);
+		assert_ptr_equal(evp, &ev);
+		assert_int_equal(evp->ev_error, 0);
+
+		rc = daos_event_fini(&ev);
+		assert_int_equal(rc, 0);
+	}
 
 	/** Read */
+	if (arg->async) {
+		rc = daos_event_init(&ev, arg->eq, NULL);
+		assert_int_equal(rc, 0);
+	}
 	daos_iov_set(&iov, rbuf, NUM_ELEMS * sizeof(int));
-	rc = daos_hl_array_read(oh, 0, &ranges, &sgl, NULL, NULL);
+	rc = daos_hl_array_read(oh, 0, &ranges, &sgl, NULL,
+				arg->async ? &ev : NULL);
 	assert_int_equal(rc, 0);
+	if (arg->async) {
+		/** Wait for completion */
+		rc = daos_eq_poll(arg->eq, 0, DAOS_EQ_WAIT, 1, &evp);
+		assert_int_equal(rc, 1);
+		assert_ptr_equal(evp, &ev);
+		assert_int_equal(evp->ev_error, 0);
+
+		rc = daos_event_fini(&ev);
+		assert_int_equal(rc, 0);
+	}
 
 	/** Verify data */
 	for (i = 0; i < NUM_ELEMS; i++) {
@@ -232,15 +281,10 @@ str_mem_str_arr_io(void **state)
 	daos_sg_list_t 	sgl;
 	int		*wbuf[NUM_SEGS], *rbuf[NUM_SEGS];
 	daos_size_t 	i, j;
-	daos_event_t	ev;
+	daos_event_t	ev, *evp;
 	int		rc;
 
 	oid = dts_oid_gen(DAOS_OC_REPL_MAX_RW, arg->myrank);
-
-	if (arg->async) {
-		rc = daos_event_init(&ev, arg->eq, NULL);
-		assert_int_equal(rc, 0);
-	}
 
 	/** open the object */
 	rc = daos_obj_open(arg->coh, oid, 0, 0, &oh, NULL);
@@ -280,17 +324,46 @@ str_mem_str_arr_io(void **state)
 	}
 
 	/** Write */
-	rc = daos_hl_array_write(oh, 0, &ranges, &sgl, NULL, NULL);
+	if (arg->async) {
+		rc = daos_event_init(&ev, arg->eq, NULL);
+		assert_int_equal(rc, 0);
+	}
+	rc = daos_hl_array_write(oh, 0, &ranges, &sgl, NULL,
+				 arg->async ? &ev : NULL);
 	assert_int_equal(rc, 0);
+	if (arg->async) {
+		/** Wait for completion */
+		rc = daos_eq_poll(arg->eq, 0, DAOS_EQ_WAIT, 1, &evp);
+		assert_int_equal(rc, 1);
+		assert_ptr_equal(evp, &ev);
+		assert_int_equal(evp->ev_error, 0);
+
+		rc = daos_event_fini(&ev);
+		assert_int_equal(rc, 0);
+	}
 
 	/** Read */
 	for (i = 0; i < NUM_SEGS; i++) {
 		daos_iov_set(&sgl.sg_iovs[i], rbuf[i],
 			     (NUM_ELEMS/NUM_SEGS) * sizeof(int));
 	}
-
-	rc = daos_hl_array_read(oh, 0, &ranges, &sgl, NULL, NULL);
+	if (arg->async) {
+		rc = daos_event_init(&ev, arg->eq, NULL);
+		assert_int_equal(rc, 0);
+	}
+	rc = daos_hl_array_read(oh, 0, &ranges, &sgl, NULL,
+				arg->async ? &ev : NULL);
 	assert_int_equal(rc, 0);
+	if (arg->async) {
+		/** Wait for completion */
+		rc = daos_eq_poll(arg->eq, 0, DAOS_EQ_WAIT, 1, &evp);
+		assert_int_equal(rc, 1);
+		assert_ptr_equal(evp, &ev);
+		assert_int_equal(evp->ev_error, 0);
+
+		rc = daos_event_fini(&ev);
+		assert_int_equal(rc, 0);
+	}
 
 	/** Verify data */
 	for (i = 0; i < NUM_SEGS; i++) {
@@ -445,20 +518,20 @@ read_empty_records(void **state)
 static const struct CMUnitTest array_io_tests[] = {
 	{"Array I/O: Contiguous memory and array (blocking)", 
 	 contig_mem_contig_arr_io, async_disable, NULL},
-	//{"Array I/O: Contiguous memory and array (non-blocking)",
-	//contig_mem_contig_arr_io, async_enable, NULL},
+	{"Array I/O: Contiguous memory and array (non-blocking)",
+	contig_mem_contig_arr_io, async_enable, NULL},
 	{"Array I/O: Contiguous memory Strided array (blocking)", 
 	 contig_mem_str_arr_io, async_disable, NULL},
-	//{"Array I/O: Contiguous memory Strided array (non-blocking)",
-	//contig_mem_str_arr_io, async_enable, NULL},
+	{"Array I/O: Contiguous memory Strided array (non-blocking)",
+	contig_mem_str_arr_io, async_enable, NULL},
 	{"Array I/O: Strided memory and array (blocking)", 
 	 str_mem_str_arr_io, async_disable, NULL},
-	//{"Array I/O: Strided memory and array (non-blocking)",
-	//str_mem_str_arr_io, async_enable, NULL},
+	{"Array I/O: Strided memory and array (non-blocking)",
+	str_mem_str_arr_io, async_enable, NULL},
 	{"Array I/O: Read from Empty array & records (blocking)", 
 	 read_empty_records, async_disable, NULL},
-	//{"Array I/O: Read from Empty array & records (blocking)", 
-	//read_empty_records, async_enable, NULL},
+	{"Array I/O: Read from Empty array & records (blocking)", 
+	read_empty_records, async_enable, NULL},
 };
 
 static int
@@ -486,7 +559,7 @@ setup(void **state)
 
 	if (arg->myrank == 0) {
 		/** create pool with minimal size */
-		rc = daos_pool_create(0731, geteuid(), getegid(), "srv_grp",
+		rc = daos_pool_create(0731, geteuid(), getegid(), NULL,
 				      NULL, "pmem", 256 << 20, &arg->svc,
 				      arg->pool_uuid, NULL);
 	}
@@ -496,7 +569,7 @@ setup(void **state)
 
 	if (arg->myrank == 0) {
 		/** connect to pool */
-		rc = daos_pool_connect(arg->pool_uuid, NULL /* grp */,
+		rc = daos_pool_connect(arg->pool_uuid, NULL,
 				       &arg->svc, DAOS_PC_RW, &arg->poh,
 				       &arg->pool_info, NULL /* ev */);
 	}

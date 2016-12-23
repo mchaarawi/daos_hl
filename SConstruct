@@ -83,9 +83,11 @@ def scons():
 #        Exit(-1)
 
     env.Append(CCFLAGS=['-g', '-Wall', '-Werror', '-D_GNU_SOURCE', '-fPIC'])
-    env.Append(CPPPATH=['/home/mschaara/source/daos_m/src/include'])
-    env.Append(LIBS=['daos', 'uuid', 'crt'])
-    env.Append(LIBPATH=['/home/mschaara/build/daos_m/build/lib'])
+    env.Append(CPPPATH=['/home/mschaara/install/daos_m/include'])
+    env.Append(CPPPATH=['/scratch/mschaara/deps/include'])
+    env.Append(LIBS=['daos', 'uuid', 'crt', 'mpi'])
+    env.Append(LIBPATH=['/home/mschaara/install/daos_m/lib'])
+    env.Append(LIBPATH=['/scratch/mschaara/deps/lib'])
 
     Export('env INCLUDE_PREFIX LIB_PREFIX BIN_PREFIX DAOS_HL_VERSION')
     config.Finish()

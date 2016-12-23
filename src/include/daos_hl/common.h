@@ -25,20 +25,21 @@
 
 #include <assert.h>
 #include <stdio.h>
+#include <stdlib.h>
 
-#define D_ERROR(fmt, ...)						\
+#define DHL_ERROR(fmt, ...)						\
 do {									\
 	fprintf(stderr, "%s:%d:%d:%s() " fmt, __FILE__, getpid(),	\
 		__LINE__, __func__, ## __VA_ARGS__);			\
 	fflush(stderr);							\
 } while (0)
 
-#define D_ASSERT(e)	assert(e)
+#define DHL_ASSERT(e)	assert(e)
 
-#define D_ASSERTF(cond, fmt, ...)					\
+#define DHL_ASSERTF(cond, fmt, ...)					\
 do {									\
 	if (!(cond))							\
-		D_ERROR(fmt, ## __VA_ARGS__);				\
+		DHL_ERROR(fmt, ## __VA_ARGS__);				\
 	assert(cond);							\
 } while (0)
 
