@@ -516,11 +516,11 @@ read_empty_records(void **state)
 } /* End read_empty_records */
 
 static const struct CMUnitTest array_io_tests[] = {
-	{"Array I/O: Contiguous memory and array (blocking)", 
+	{"Array I/O: Contiguous memory and array (blocking)",
 	 contig_mem_contig_arr_io, async_disable, NULL},
 	{"Array I/O: Contiguous memory and array (non-blocking)",
 	contig_mem_contig_arr_io, async_enable, NULL},
-	{"Array I/O: Contiguous memory Strided array (blocking)", 
+	{"Array I/O: Contiguous memory Strided array (blocking)",
 	 contig_mem_str_arr_io, async_disable, NULL},
 	{"Array I/O: Contiguous memory Strided array (non-blocking)",
 	contig_mem_str_arr_io, async_enable, NULL},
@@ -528,10 +528,10 @@ static const struct CMUnitTest array_io_tests[] = {
 	 str_mem_str_arr_io, async_disable, NULL},
 	{"Array I/O: Strided memory and array (non-blocking)",
 	str_mem_str_arr_io, async_enable, NULL},
-	{"Array I/O: Read from Empty array & records (blocking)", 
-	 read_empty_records, async_disable, NULL},
-	{"Array I/O: Read from Empty array & records (blocking)", 
-	read_empty_records, async_enable, NULL},
+//	{"Array I/O: Read from Empty array & records (blocking)", 
+//	 read_empty_records, async_disable, NULL},
+//	{"Array I/O: Read from Empty array & records (blocking)", 
+//	read_empty_records, async_enable, NULL},
 };
 
 static int

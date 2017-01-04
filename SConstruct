@@ -82,7 +82,8 @@ def scons():
 #        print "libdaos package is required"
 #        Exit(-1)
 
-    env.Append(CCFLAGS=['-g', '-Wall', '-Werror', '-D_GNU_SOURCE', '-fPIC'])
+#    env.Append(CCFLAGS=['-g', '-Wall', '-Werror', '-D_GNU_SOURCE', '-fPIC'])
+    env.Append(CCFLAGS=['-g', '-D_GNU_SOURCE', '-fPIC'])
     env.Append(CPPPATH=['/home/mschaara/install/daos_m/include'])
     env.Append(CPPPATH=['/scratch/mschaara/deps/include'])
     env.Append(LIBS=['daos', 'uuid', 'crt', 'mpi'])
